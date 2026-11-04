@@ -419,6 +419,11 @@ fn allot(shares: &[f32], slots: usize) -> Vec<usize> {
 }
 
 impl Whale {
+    /// The color each language is painted on the body, in the same order as the languages.
+    pub fn language_colors(&self) -> Vec<Rgb> {
+        self.ramps.iter().map(|ramp| ramp.0[2]).collect()
+    }
+
     pub fn new(activity: &Activity, languages: &[Language], pattern: Pattern) -> Whale {
         // Growth: fast at first, with diminishing returns up to 20,000 contributions.
         let growth = ((1.0 + activity.total as f32 / 10.0).ln() / 2001f32.ln()).clamp(0.0, 1.0);

@@ -1,6 +1,8 @@
 # Copy into your profile repository (github.com/<you>/<you>) as
 # .github/workflows/beluga.yml, then add this to its README.md:
 #   <img src="beluga/beluga.gif" width="512" alt="My git-beluga">
+#   <br><br>
+#   <img src="beluga/legend.svg" width="512" alt="What the colors mean">
 #
 # To average in private repositories, add a BELUGA_TOKEN secret (see the README). Without
 # it, or if it can't see any private repositories, this workflow leaves your current whale
@@ -54,7 +56,7 @@ jobs:
       - name: Commit the whale if it changed
         if: steps.plan.outputs.commit == 'true'
         run: |
-          git add beluga/beluga.gif
+          git add beluga/beluga.gif beluga/legend.svg
           if git diff --cached --quiet; then
             echo "The whale is unchanged; nothing to commit."
             exit 0

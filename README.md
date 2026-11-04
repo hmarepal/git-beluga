@@ -17,7 +17,7 @@ a fish. This is a separate implementation with its own art and rules.
 | Current weekly streak | A longer bubble trail, which thins out once a streak ends |
 | Longest weekly streak | Richer colors, up to 26 weeks |
 
-Forks and repositories with no code are skipped. A repository that is 83% Cuda and 17% C++
+`legend.svg` lists each language's color and percentage, and updates with the whale. Forks and repositories with no code are skipped. A repository that is 83% Cuda and 17% C++
 adds 0.83 and 0.17 to those languages, and the totals are divided by the number of
 repositories, so a huge notebook repo counts the same as a small script.
 
@@ -48,7 +48,12 @@ The first rule that matches wins. "Today" means the last complete UTC day.
 
 1. Copy [examples/profile-workflow.yml](examples/profile-workflow.yml) into your profile
    repository (the one named after your username) as `.github/workflows/beluga.yml`.
-2. Add `<img src="beluga/beluga.gif" width="512" alt="My git-beluga">` to its `README.md`.
+2. Add the whale and its color legend to its `README.md`:
+   ```html
+   <img src="beluga/beluga.gif" width="512" alt="My git-beluga">
+   <br><br>
+   <img src="beluga/legend.svg" width="512" alt="What the colors mean">
+   ```
 3. Add a token so the nightly job can read your private repositories:
    - Create a [fine-grained token](https://github.com/settings/personal-access-tokens/new)
      with access to **All repositories**, and add the **Metadata: Read-only** repository

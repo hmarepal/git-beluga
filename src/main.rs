@@ -2,6 +2,7 @@
 
 mod activity;
 mod collect;
+mod legend;
 mod output;
 mod whale;
 
@@ -22,7 +23,7 @@ USAGE:
   git-beluga sheet [-o FILE]             every pattern, mood and size, as one PNG
 
 OPTIONS:
-  -o, --out DIR       folder for beluga.gif and beluga.png [default: beluga]
+  -o, --out DIR       folder for beluga.gif, beluga.png and legend.svg [default: beluga]
       --pattern NAME  rings|aurora|patches|tide|swirl|ombre [default: rings]
       --mood NAME     force rest|drift|cruise|greet|swim|leap instead of today's
       --require-private  draw nothing if the token can't see any private repositories";
@@ -82,6 +83,8 @@ fn draw_snapshot(snapshot: &Snapshot, options: &Options) -> Result<(), String> {
     let png = output::encode_png(&frames[0], W, H, None)?;
     fs::write(dir.join("beluga.gif"), &gif).map_err(|e| e.to_string())?;
     fs::write(dir.join("beluga.png"), &png).map_err(|e| e.to_string())?;
+    let legend = legend::svg(&snapshot.languages, &beluga.language_colors());
+    fs::write(dir.join("legend.svg"), legend).map_err(|e| e.to_string())?;
     let languages: Vec<String> = snapshot
         .languages
         .iter()
