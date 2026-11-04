@@ -1,6 +1,6 @@
 # Copy into your profile repository (github.com/<you>/<you>) as
 # .github/workflows/beluga.yml, then add this to its README.md:
-#   <img src="beluga/beluga.gif" width="512" alt="My git-beluga">
+#   <img src="beluga/beluga.gif" width="560" alt="My git-beluga">
 #   <br><br>
 #   <img src="beluga/legend.svg" width="512" alt="What the colors mean">
 #

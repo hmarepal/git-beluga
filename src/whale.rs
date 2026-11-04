@@ -7,22 +7,24 @@ use std::f32::consts::{PI, TAU};
 
 use crate::activity::{Activity, Language, Mood};
 
-pub const W: usize = 256;
-pub const H: usize = 204;
+pub const W: usize = 280;
+pub const H: usize = 226;
 const FRAMES: usize = 108;
 const FLOW_BANDS: usize = 12;
-const RING: f32 = 70.0;
+const RING: f32 = 64.0;
 const LENGTH: f32 = 90.0;
 /// Camera height above the horizon: lower shows more flank, higher shows more back.
 const ELEVATION: f32 = 0.56;
 const FOCAL: f32 = 430.0;
-const SCREEN_CENTER: (f32, f32) = (128.0, 106.0);
-const ZOOM: f32 = 1.2;
+const SCREEN_CENTER: (f32, f32) = (140.0, 118.0);
+const ZOOM: f32 = 1.4;
 const WATER_Z: f32 = -27.0;
 /// Where color starts on the body; the head stays white for the face.
-const COLOR_START: f32 = 0.25;
+const COLOR_START: f32 = 0.2;
 /// Skin left white between neighboring rings, as area: about a pixel at mid-body.
-const RING_GAP_AREA: f32 = 7.0;
+const RING_GAP_AREA: f32 = 3.0;
+const MOUTH_RADIUS: f32 = 0.72;
+const BLUSH_RADIUS: f32 = 1.7;
 const EYE_U: f32 = 0.15;
 const EYE_AROUND: f32 = 68.0;
 /// Tips each eye a little forward, so both can be seen from the front.
@@ -869,7 +871,6 @@ impl Face {
             let eye = aim(EYE_U, EYE_AROUND, sign, EYE_AHEAD);
             face.eyes
                 .push((eye, add(eye, add(mul(s.up, 0.85), mul(s.fwd, 0.85))), s.up));
-            face.blushes.push(aim(0.15, 100.0, sign, 0.45));
             for k in 0..=44 {
                 let u = lerp(0.06, 0.142, k as f32 / 44.0);
                 let around = profile(
@@ -878,6 +879,19 @@ impl Face {
                 );
                 face.mouth.push(aim(u, around, sign, 0.0));
             }
+            // The blush caps the smile: it keeps following the curve past the corner until
+            // its edge just touches the end of the line, so they meet without overlapping.
+            let corner = *face.mouth.last().expect("the mouth was just drawn");
+            let touching = MOUTH_RADIUS + BLUSH_RADIUS;
+            let mut blush = corner;
+            for k in 1..200 {
+                let past = k as f32 * 0.0005;
+                blush = aim(0.142 + past, 88.0 - past * 700.0, sign, 0.0);
+                if dot(sub(blush, corner), sub(blush, corner)) >= touching * touching {
+                    break;
+                }
+            }
+            face.blushes.push(blush);
         }
         face
     }
@@ -902,10 +916,10 @@ impl Face {
                 return Some(Rgb(0x8c, 0xa0, 0xbe));
             }
         }
-        if self.blushes.iter().any(|&b| near(b, 1.7)) {
+        if self.blushes.iter().any(|&b| near(b, BLUSH_RADIUS)) {
             return Some(Rgb(0xf7, 0xbd, 0xc8));
         }
-        if self.mouth.iter().any(|&m| near(m, 0.72)) {
+        if self.mouth.iter().any(|&m| near(m, MOUTH_RADIUS)) {
             return Some(Rgb(0x4d, 0x5d, 0x80));
         }
         None
@@ -1118,6 +1132,39 @@ mod tests {
                     "{name}/{mood:?} jumps {different} pixels at the loop point"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn the_blush_touches_the_smile_without_overlapping_it_or_the_eye() {
+        let a = activity(40);
+        let whale = Whale::new(&a, &languages(&[1.0]), Pattern::Rings);
+        let samples = spine(&whale, Mood::Swim, 0.3);
+        let mut buffer = Buffer::new();
+        let cam = Camera::new();
+        for (i, s) in samples.iter().enumerate() {
+            let u = i as f32 / (samples.len() - 1) as f32;
+            let center = add(s.center, mul(s.up, beak_drop(u)));
+            buffer.sphere(&cam, center, s.r, Part::Body, u, s.side, s.up);
+        }
+        let face = Face::new(&buffer, &samples);
+        let gap = |a: V3, b: V3| dot(sub(a, b), sub(a, b)).sqrt();
+        for (&blush, &(eye, _, _)) in face.blushes.iter().zip(&face.eyes) {
+            let nearest = face
+                .mouth
+                .iter()
+                .map(|&m| gap(m, blush))
+                .fold(f32::MAX, f32::min);
+            let touching = MOUTH_RADIUS + BLUSH_RADIUS;
+            assert!(
+                (nearest - touching).abs() < 0.2,
+                "mouth gap {nearest}, wanted {touching}"
+            );
+            assert!(
+                gap(blush, eye) >= BLUSH_RADIUS + 3.1,
+                "eye gap {}",
+                gap(blush, eye)
+            );
         }
     }
 

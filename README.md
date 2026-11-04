@@ -50,7 +50,7 @@ The first rule that matches wins. "Today" means the last complete UTC day.
    repository (the one named after your username) as `.github/workflows/beluga.yml`.
 2. Add the whale and its color legend to its `README.md`:
    ```html
-   <img src="beluga/beluga.gif" width="512" alt="My git-beluga">
+   <img src="beluga/beluga.gif" width="560" alt="My git-beluga">
    <br><br>
    <img src="beluga/legend.svg" width="512" alt="What the colors mean">
    ```
