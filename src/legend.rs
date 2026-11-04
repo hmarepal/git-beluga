@@ -1,4 +1,4 @@
-//! A small image explaining the whale's colors: one swatch, name and percentage per language.
+//! A small image explaining the whale's colors: one colored circle, name and percentage per language.
 
 use std::fmt::Write;
 
@@ -35,8 +35,9 @@ pub fn svg(languages: &[Language], colors: &[Rgb]) -> String {
         let middle = y + ROW_HEIGHT / 2;
         let _ = writeln!(
             out,
-            "<rect x=\"{x}\" y=\"{}\" width=\"{SWATCH}\" height=\"{SWATCH}\" fill=\"#{:02x}{:02x}{:02x}\"/>",
-            middle - SWATCH / 2,
+            "<circle cx=\"{}\" cy=\"{middle}\" r=\"{}\" fill=\"#{:02x}{:02x}{:02x}\"/>",
+            x + SWATCH / 2,
+            SWATCH / 2,
             color.0,
             color.1,
             color.2,

@@ -3,8 +3,8 @@
 Raise a pixel-art beluga from a GitHub account's activity and keep it on your profile
 README as a looping GIF. Every night it redraws from what you did the day before.
 
-Inspired by [git-koi](https://github.com/yalongwastaken/git-koi), which does the same with
-a fish. This is a separate implementation with its own art and rules.
+Inspired by [git-koi](https://github.com/yalongwastaken/git-koi) by
+[Anthony Yalong](https://github.com/yalongwastaken), which does the same with a fish. This is a separate implementation with its own art and rules.
 
 ![Six patterns, six moods, then three sizes](docs/sheet.png)
 
