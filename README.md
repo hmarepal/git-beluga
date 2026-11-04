@@ -22,8 +22,7 @@ adds 0.83 and 0.17 to those languages, and the totals are divided by the number 
 repositories, so a huge notebook repo counts the same as a small script.
 
 In the default Rings pattern, wavy rings repeat down the body with white between them. Each
-language gets at least one ring and the bigger ones get more, while the least-used language
-fills the tail.
+language gets at least one ring and the bigger ones get more.
 
 ## Patterns
 

@@ -22,12 +22,10 @@ const WATER_Z: f32 = -27.0;
 /// Where color starts on the body; the head stays white for the face.
 const COLOR_START: f32 = 0.25;
 /// Rings repeat down the body: this many, one wave of color and white each.
-const HOOPS: usize = 7;
+const HOOPS: usize = 8;
 const HOOP_LENGTH: f32 = 7.6;
 /// The part of each hoop's length that is color; the rest stays white.
 const HOOP_COLOR: f32 = 0.62;
-/// Behind this point the body is the tail, painted in the least-used language.
-const TAIL_START: f32 = 0.84;
 const MOUTH_RADIUS: f32 = 0.72;
 const BLUSH_RADIUS: f32 = 1.7;
 const EYE_U: f32 = 0.15;
@@ -289,8 +287,7 @@ impl Buffer {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Pattern {
-    /// Wavy hoops down the body, repeated in proportion to the languages, with the least-used
-    /// language filling the tail.
+    /// Wavy hoops down the body, repeated in proportion to the languages.
     Rings,
     /// Long ribbons of light flowing the length of the body.
     Aurora,
@@ -333,11 +330,10 @@ fn mix(a: Rgb, b: Rgb, t: f32) -> Rgb {
     Rgb(m(a.0, b.0), m(a.1, b.1), m(a.2, b.2))
 }
 
-/// Which language each hoop wears, from the head back. The least-used language has the tail,
-/// so the others share the hoops: everyone gets one, then the rest go by share. An account
-/// with one language wears it everywhere.
+/// Which language each hoop wears, from the head back: everyone gets one, biggest first,
+/// then the rest go by share.
 fn hoop_languages(shares: &[f32]) -> Vec<usize> {
-    let pool = shares.len().saturating_sub(1).max(1).min(shares.len());
+    let pool = shares.len();
     if pool == 0 {
         return Vec::new();
     }
@@ -365,8 +361,6 @@ pub struct Whale {
     skin: Ramp,
     ramps: Vec<Ramp>,
     hoops: Vec<usize>,
-    /// The least-used language, which fills the tail in the Rings pattern.
-    least_used: Option<usize>,
     slots: Vec<usize>,
     /// Colors for bands that travel: exactly FLOW_BANDS pass per lap, so the loop closes.
     flow: Vec<usize>,
@@ -430,7 +424,6 @@ impl Whale {
                 })
                 .collect(),
             hoops: hoop_languages(&shares),
-            least_used: shares.len().checked_sub(1),
             tips: allot(&shares, 4),
             flow: allot(&shares, FLOW_BANDS),
             slots,
@@ -751,10 +744,6 @@ fn scene(whale: &Whale, mood: Mood, t: f32) -> Frame {
             // Wrapped light, so the shadow side falls off gently into blue.
             let light = (dot(hit.normal, sun) * 0.74 + 0.27).clamp(0.0, 1.0);
             let color = match hit.part {
-                Part::Fluke(_) if whale.pattern == Pattern::Rings && whale.least_used.is_some() => {
-                    let language = whale.least_used.expect("checked by the guard");
-                    whale.ramps[language].at(light * 0.85 + 0.12, x, y)
-                }
                 Part::Flipper(i) if hit.u > 0.62 => tip(2 + i).at(light * 0.8 + 0.1, x, y),
                 Part::Fluke(i) if hit.u > 0.64 => tip(i).at(light * 0.8 + 0.1, x, y),
                 Part::Body => {
@@ -955,16 +944,12 @@ fn marking(whale: &Whale, u: f32, around: f32, t: f32, dither: f32) -> Option<(u
         Pattern::Rings => {
             let angle = around.to_radians();
             let wavy = x + 2.4 * (angle * 2.0).sin() + 0.5 * (angle * 5.0 + x * 0.7).sin();
-            if wavy >= TAIL_START * LENGTH {
-                whale.least_used.map(|language| (language, 0.0))
-            } else {
-                let v = (wavy - COLOR_START * LENGTH) / HOOP_LENGTH;
-                let band = v.floor();
-                (v >= 0.0 && v - band < HOOP_COLOR)
-                    .then(|| whale.hoops.get(band as usize))
-                    .flatten()
-                    .map(|&language| (language, 0.0))
-            }
+            let v = (wavy - COLOR_START * LENGTH) / HOOP_LENGTH;
+            let band = v.floor();
+            (v >= 0.0 && v - band < HOOP_COLOR)
+                .then(|| whale.hoops.get(band as usize))
+                .flatten()
+                .map(|&language| (language, 0.0))
         }
         Pattern::Tide => {
             let v = (x + y.abs() * 0.85) / 9.0 - t * FLOW_BANDS as f32;
@@ -1067,34 +1052,23 @@ mod tests {
     }
 
     #[test]
-    fn hoops_follow_shares_and_leave_the_least_used_language_for_the_tail() {
+    fn hoops_follow_shares_and_every_language_gets_one() {
         let shares = [0.257, 0.197, 0.182, 0.182, 0.091, 0.074, 0.017];
         let hoops = hoop_languages(&shares);
         let count = |language: usize| hoops.iter().filter(|&&h| h == language).count();
         assert_eq!(hoops.len(), HOOPS);
-        assert_eq!(count(6), 0, "the least-used language belongs to the tail");
-        for language in 0..6 {
+        for language in 0..shares.len() {
             assert!(count(language) >= 1, "language {language} has no hoop");
         }
-        assert!(count(0) >= count(4));
+        assert!(count(0) >= count(6));
     }
 
     #[test]
-    fn one_or_two_languages_still_work() {
+    fn few_languages_still_work() {
         assert_eq!(hoop_languages(&[1.0]), vec![0; HOOPS]);
-        assert_eq!(hoop_languages(&[0.83, 0.17]), vec![0; HOOPS]);
+        let two = hoop_languages(&[0.83, 0.17]);
+        assert_eq!(two.iter().filter(|&&h| h == 1).count(), 1);
         assert!(hoop_languages(&[]).is_empty());
-    }
-
-    #[test]
-    fn the_tail_is_painted_in_the_least_used_language() {
-        let a = activity(4000);
-        let langs = languages(&[0.6, 0.3, 0.1]);
-        let whale = Whale::new(&a, &langs, Pattern::Rings);
-        let least = whale.ramps[2].0;
-        let frame = scene(&whale, Mood::Swim, 0.3);
-        let pixels = frame.iter().flatten().filter(|c| least.contains(c)).count();
-        assert!(pixels > 60, "only {pixels} tail-colored pixels");
     }
 
     #[test]
