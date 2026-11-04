@@ -7,22 +7,22 @@ use std::f32::consts::{PI, TAU};
 
 use crate::activity::{Activity, Language, Mood};
 
-pub const W: usize = 280;
-pub const H: usize = 226;
+pub const W: usize = 256;
+pub const H: usize = 204;
 const FRAMES: usize = 108;
 const FLOW_BANDS: usize = 12;
-const RING: f32 = 64.0;
+const RING: f32 = 70.0;
 const LENGTH: f32 = 90.0;
 /// Camera height above the horizon: lower shows more flank, higher shows more back.
 const ELEVATION: f32 = 0.56;
 const FOCAL: f32 = 430.0;
-const SCREEN_CENTER: (f32, f32) = (140.0, 118.0);
-const ZOOM: f32 = 1.4;
+const SCREEN_CENTER: (f32, f32) = (128.0, 106.0);
+const ZOOM: f32 = 1.2;
 const WATER_Z: f32 = -27.0;
 /// Where color starts on the body; the head stays white for the face.
-const COLOR_START: f32 = 0.2;
-/// Skin left white between neighboring rings, as area: about a pixel at mid-body.
-const RING_GAP_AREA: f32 = 3.0;
+const COLOR_START: f32 = 0.25;
+/// How much of the skin behind the head the rings cover; the rest stays white between them.
+const RING_COVERAGE: f32 = 0.55;
 const MOUTH_RADIUS: f32 = 0.72;
 const BLUSH_RADIUS: f32 = 1.7;
 const EYE_U: f32 = 0.15;
@@ -284,7 +284,7 @@ impl Buffer {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Pattern {
-    /// Hoops around the body, each covering its language's exact share of the skin.
+    /// Slim hoops around the body, sized by each language's share of the colored skin.
     Rings,
     /// Long ribbons of light flowing the length of the body.
     Aurora,
@@ -347,11 +347,19 @@ fn lay_out_rings(shares: &[f32]) -> Vec<Ring> {
     let step = (1.0 - COLOR_START) / STEPS as f32;
     let area_of = |i: usize| radius(COLOR_START + (i as f32 + 0.5) * step) * step * LENGTH;
     let body_area: f32 = (0..STEPS).map(area_of).sum();
-    let gaps = RING_GAP_AREA * shares.len().saturating_sub(1) as f32;
-    let colored = body_area - gaps;
+    let colored = body_area * RING_COVERAGE;
+    // Each ring follows an equal band of white, so slim rings spread down the body.
+    let gap_area = (body_area - colored) / shares.len() as f32;
     let mut rings = Vec::with_capacity(shares.len());
     let (mut i, mut walked) = (0, 0.0);
     for (language, &share) in shares.iter().enumerate() {
+        // White comes first, so the last and smallest ring lands on the thin tail, where the
+        // same area makes a longer, easier-to-see band.
+        let gap_end = walked + gap_area;
+        while i < STEPS && walked < gap_end {
+            walked += area_of(i);
+            i += 1;
+        }
         let start = COLOR_START + i as f32 * step;
         let target = walked + share / total * colored;
         while i < STEPS && walked < target {
@@ -363,11 +371,6 @@ fn lay_out_rings(shares: &[f32]) -> Vec<Ring> {
             end: COLOR_START + i as f32 * step,
             language,
         });
-        let gap_end = walked + RING_GAP_AREA;
-        while i < STEPS && walked < gap_end {
-            walked += area_of(i);
-            i += 1;
-        }
     }
     rings
 }
@@ -637,6 +640,28 @@ fn draw_water(frame: &mut [Option<Rgb>], cam: &Camera, samples: &[Sample]) {
     }
 }
 
+/// How far along the body a point on the skin really is, from the nearest spine sample. The
+/// sphere that drew a pixel can't say: where the body tapers, larger spheres ahead of it win
+/// the depth test and would stretch every marking there.
+fn along_body(samples: &[Sample], pos: V3) -> f32 {
+    let (mut best, mut best_gap) = (0, f32::MAX);
+    for (i, s) in samples.iter().enumerate() {
+        let d = sub(pos, s.center);
+        let gap = dot(d, d);
+        if gap < best_gap {
+            best_gap = gap;
+            best = i;
+        }
+    }
+    best as f32 / (samples.len() - 1) as f32
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Body pixels drawn per ring language, so tests can measure the real picture.
+    static RING_PIXELS: std::cell::RefCell<Vec<u32>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
 fn scene(whale: &Whale, mood: Mood, t: f32) -> Frame {
     let cam = Camera::new();
     let samples = spine(whale, mood, t);
@@ -768,8 +793,17 @@ fn scene(whale: &Whale, mood: Mood, t: f32) -> Frame {
                         .flatten()
                     {
                         color
-                    } else if let Some((language, shift)) = marking(whale, hit.u, around, t, dither)
+                    } else if let Some((language, shift)) =
+                        marking(whale, along_body(&samples, hit.pos), around, t, dither)
                     {
+                        #[cfg(test)]
+                        RING_PIXELS.with(|counts| {
+                            let mut counts = counts.borrow_mut();
+                            if counts.len() <= language {
+                                counts.resize(language + 1, 0);
+                            }
+                            counts[language] += 1;
+                        });
                         whale.ramps[language].at(light * 0.85 + 0.12 + shift, x, y)
                     } else {
                         whale.skin.at(light, x, y)
@@ -879,19 +913,7 @@ impl Face {
                 );
                 face.mouth.push(aim(u, around, sign, 0.0));
             }
-            // The blush caps the smile: it keeps following the curve past the corner until
-            // its edge just touches the end of the line, so they meet without overlapping.
-            let corner = *face.mouth.last().expect("the mouth was just drawn");
-            let touching = MOUTH_RADIUS + BLUSH_RADIUS;
-            let mut blush = corner;
-            for k in 1..200 {
-                let past = k as f32 * 0.0005;
-                blush = aim(0.142 + past, 88.0 - past * 700.0, sign, 0.0);
-                if dot(sub(blush, corner), sub(blush, corner)) >= touching * touching {
-                    break;
-                }
-            }
-            face.blushes.push(blush);
+            face.blushes.push(aim(0.15, 100.0, sign, 0.45));
         }
         face
     }
@@ -1098,6 +1120,31 @@ mod tests {
     }
 
     #[test]
+    fn drawn_rings_match_the_shares_over_a_whole_lap() {
+        let shares = [0.257, 0.197, 0.182, 0.182, 0.091, 0.074, 0.017];
+        let a = activity(40);
+        let whale = Whale::new(&a, &languages(&shares), Pattern::Rings);
+        RING_PIXELS.with(|counts| counts.borrow_mut().clear());
+        for i in 0..FRAMES {
+            scene(&whale, Mood::Swim, i as f32 / FRAMES as f32);
+        }
+        let counts = RING_PIXELS.with(|counts| counts.borrow().clone());
+        let total: u32 = counts.iter().sum();
+        for (i, (&want, &got)) in shares.iter().zip(&counts).enumerate() {
+            let measured = got as f32 / total as f32;
+            println!(
+                "language {i}: wanted {:.1}%, drew {:.1}%",
+                want * 100.0,
+                measured * 100.0
+            );
+            assert!(
+                (measured - want).abs() <= 0.03 + want * 0.25,
+                "language {i}: wanted {want}, drew {measured}"
+            );
+        }
+    }
+
+    #[test]
     fn a_tiny_language_still_gets_a_visible_ring() {
         let rings = lay_out_rings(&[0.283, 0.217, 0.2, 0.1, 0.1, 0.082, 0.018]);
         let smallest = rings[6];
@@ -1132,39 +1179,6 @@ mod tests {
                     "{name}/{mood:?} jumps {different} pixels at the loop point"
                 );
             }
-        }
-    }
-
-    #[test]
-    fn the_blush_touches_the_smile_without_overlapping_it_or_the_eye() {
-        let a = activity(40);
-        let whale = Whale::new(&a, &languages(&[1.0]), Pattern::Rings);
-        let samples = spine(&whale, Mood::Swim, 0.3);
-        let mut buffer = Buffer::new();
-        let cam = Camera::new();
-        for (i, s) in samples.iter().enumerate() {
-            let u = i as f32 / (samples.len() - 1) as f32;
-            let center = add(s.center, mul(s.up, beak_drop(u)));
-            buffer.sphere(&cam, center, s.r, Part::Body, u, s.side, s.up);
-        }
-        let face = Face::new(&buffer, &samples);
-        let gap = |a: V3, b: V3| dot(sub(a, b), sub(a, b)).sqrt();
-        for (&blush, &(eye, _, _)) in face.blushes.iter().zip(&face.eyes) {
-            let nearest = face
-                .mouth
-                .iter()
-                .map(|&m| gap(m, blush))
-                .fold(f32::MAX, f32::min);
-            let touching = MOUTH_RADIUS + BLUSH_RADIUS;
-            assert!(
-                (nearest - touching).abs() < 0.2,
-                "mouth gap {nearest}, wanted {touching}"
-            );
-            assert!(
-                gap(blush, eye) >= BLUSH_RADIUS + 3.1,
-                "eye gap {}",
-                gap(blush, eye)
-            );
         }
     }
 

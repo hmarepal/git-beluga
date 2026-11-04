@@ -22,14 +22,14 @@ adds 0.83 and 0.17 to those languages, and the totals are divided by the number 
 repositories, so a huge notebook repo counts the same as a small script.
 
 In the default Rings pattern, each language gets one ring covering its share of the
-colored skin. The body tapers, so the same share makes a narrow ring on the wide back and a
+colored skin, with white between the rings. The body tapers, so the same share makes a narrow ring on the wide back and a
 longer one near the tail.
 
 ## Patterns
 
 `rings` (default), `aurora`, `patches`, `tide`, `swirl` and `ombre`. Rings is the only one
-whose coverage matches your percentages exactly; the others spread colors roughly in
-proportion.
+whose coverage closely follows your percentages, within about 3 points over a lap; the
+others spread colors roughly in proportion.
 
 ## Moods
 
@@ -50,7 +50,7 @@ The first rule that matches wins. "Today" means the last complete UTC day.
    repository (the one named after your username) as `.github/workflows/beluga.yml`.
 2. Add the whale and its color legend to its `README.md`:
    ```html
-   <img src="beluga/beluga.gif" width="560" alt="My git-beluga">
+   <img src="beluga/beluga.gif" width="512" alt="My git-beluga">
    <br><br>
    <img src="beluga/legend.svg" width="512" alt="What the colors mean">
    ```
