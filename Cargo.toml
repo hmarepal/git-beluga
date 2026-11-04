@@ -1,0 +1,16 @@
+[package]
+name = "git-beluga"
+version = "0.1.0"
+edition = "2024"
+description = "Raise a pixel-art beluga from a GitHub account's activity, as a looping GIF for a profile README."
+license = "MIT"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
+gif = { version = "0.14", default-features = false, features = ["std"] }
+png = "0.18"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+strip = true

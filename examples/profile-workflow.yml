@@ -1,0 +1,64 @@
+# Copy into your profile repository (github.com/<you>/<you>) as
+# .github/workflows/beluga.yml, then add this to its README.md:
+#   <img src="beluga/beluga.gif" width="512" alt="My git-beluga">
+#
+# To average in private repositories, add a BELUGA_TOKEN secret (see the README). Without
+# it this workflow draws nothing and leaves your current whale alone, so private languages
+# never silently vanish from it. Run it by hand with "test" ticked to try the Action on
+# public data without committing anything.
+name: Beluga
+
+on:
+  schedule:
+    # Just after midnight UTC, so the whale reacts to the day that just ended.
+    - cron: "20 0 * * *"
+  workflow_dispatch:
+    inputs:
+      test:
+        description: Draw from public data only, and commit nothing
+        type: boolean
+        default: false
+  push:
+    paths: [.github/workflows/beluga.yml]
+
+permissions:
+  contents: write
+
+concurrency: beluga
+
+jobs:
+  beluga:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Decide what to do
+        id: plan
+        env:
+          TEST: ${{ inputs.test }}
+          TOKEN: ${{ secrets.BELUGA_TOKEN }}
+        run: |
+          if [ "$TEST" = "true" ]; then
+            echo "draw=true" >> "$GITHUB_OUTPUT"
+          elif [ -n "$TOKEN" ]; then
+            echo "draw=true" >> "$GITHUB_OUTPUT"
+            echo "commit=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No BELUGA_TOKEN secret, so the whale was left as it is."
+          fi
+      - uses: actions/checkout@v4
+        if: steps.plan.outputs.draw == 'true'
+      - uses: hmarepal/git-beluga@main
+        if: steps.plan.outputs.draw == 'true'
+        with:
+          token: ${{ inputs.test && github.token || secrets.BELUGA_TOKEN }}
+      - name: Commit the whale if it changed
+        if: steps.plan.outputs.commit == 'true'
+        run: |
+          git add beluga/beluga.gif
+          if git diff --cached --quiet; then
+            echo "The whale is unchanged; nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --quiet --message "Draw today's beluga"
+          git push --quiet

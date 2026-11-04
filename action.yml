@@ -1,0 +1,33 @@
+name: git-beluga
+description: Raise a pixel-art beluga from a GitHub account's activity.
+branding:
+  icon: droplet
+  color: blue
+inputs:
+  login:
+    description: Account to draw. Defaults to the repository owner.
+    default: ${{ github.repository_owner }}
+  output-dir:
+    description: Folder that receives beluga.gif and beluga.png.
+    default: beluga
+  pattern:
+    description: rings, aurora, patches, tide, swirl or ombre.
+    default: rings
+  token:
+    description: Token for reading the account. The built-in token only sees public repositories; the account's own token also averages in private ones.
+    default: ${{ github.token }}
+runs:
+  using: composite
+  steps:
+    - name: Build git-beluga
+      shell: bash
+      run: cargo build --release --locked --manifest-path "$GITHUB_ACTION_PATH/Cargo.toml"
+    - name: Draw the beluga
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        LOGIN: ${{ inputs.login }}
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+        PATTERN: ${{ inputs.pattern }}
+      run: |
+        "$GITHUB_ACTION_PATH/target/release/git-beluga" draw "$LOGIN" --out "$OUTPUT_DIR" --pattern "$PATTERN"
