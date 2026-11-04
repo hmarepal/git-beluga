@@ -3,8 +3,8 @@
 #   <img src="beluga/beluga.gif" width="512" alt="My git-beluga">
 #
 # To average in private repositories, add a BELUGA_TOKEN secret (see the README). Without
-# it this workflow draws nothing and leaves your current whale alone, so private languages
-# never silently vanish from it. Run it by hand with "test" ticked to try the Action on
+# it, or if it can't see any private repositories, this workflow leaves your current whale
+# alone, so private languages never silently vanish from it. Run it by hand with "test" ticked to try the Action on
 # public data without committing anything.
 name: Beluga
 
@@ -50,6 +50,7 @@ jobs:
         if: steps.plan.outputs.draw == 'true'
         with:
           token: ${{ inputs.test && github.token || secrets.BELUGA_TOKEN }}
+          require-private: ${{ !inputs.test }}
       - name: Commit the whale if it changed
         if: steps.plan.outputs.commit == 'true'
         run: |

@@ -24,12 +24,14 @@ USAGE:
 OPTIONS:
   -o, --out DIR       folder for beluga.gif and beluga.png [default: beluga]
       --pattern NAME  rings|aurora|patches|tide|swirl|ombre [default: rings]
-      --mood NAME     force rest|drift|cruise|greet|swim|leap instead of today's";
+      --mood NAME     force rest|drift|cruise|greet|swim|leap instead of today's
+      --require-private  draw nothing if the token can't see any private repositories";
 
 struct Options {
     out: Option<PathBuf>,
     pattern: Pattern,
     mood: Option<Mood>,
+    require_private: bool,
 }
 
 fn parse_options(args: &[String]) -> Result<Options, String> {
@@ -37,6 +39,7 @@ fn parse_options(args: &[String]) -> Result<Options, String> {
         out: None,
         pattern: Pattern::Rings,
         mood: None,
+        require_private: false,
     };
     let mut args = args.iter();
     while let Some(flag) = args.next() {
@@ -51,6 +54,7 @@ fn parse_options(args: &[String]) -> Result<Options, String> {
                 let name = value()?;
                 options.mood = Some(Mood::parse(name).ok_or(format!("unknown mood {name}"))?);
             }
+            "--require-private" => options.require_private = true,
             other => return Err(format!("unknown option {other}\n\n{USAGE}")),
         }
     }
@@ -58,6 +62,13 @@ fn parse_options(args: &[String]) -> Result<Options, String> {
 }
 
 fn draw_snapshot(snapshot: &Snapshot, options: &Options) -> Result<(), String> {
+    if options.require_private && snapshot.private_repos_counted == 0 {
+        return Err(format!(
+            "this token can't see any private repositories, so nothing was drawn. \
+             Give it access to All repositories with Metadata: Read-only ({} public repos were visible).",
+            snapshot.repos_counted
+        ));
+    }
     let activity = Activity::from_snapshot(snapshot);
     let mood = options.mood.unwrap_or_else(|| activity.mood());
     let beluga = Whale::new(&activity, &snapshot.languages, options.pattern);

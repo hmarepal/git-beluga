@@ -51,8 +51,8 @@ The first rule that matches wins. "Today" means the last complete UTC day.
 2. Add `<img src="beluga/beluga.gif" width="512" alt="My git-beluga">` to its `README.md`.
 3. Add a token so the nightly job can read your private repositories:
    - Create a [fine-grained token](https://github.com/settings/personal-access-tokens/new)
-     with access to **All repositories**. Its default read-only **Metadata** permission is
-     enough for languages.
+     with access to **All repositories**, and add the **Metadata: Read-only** repository
+     permission.
    - Run `gh secret set BELUGA_TOKEN --repo <you>/<you>` and paste it in.
 
 Only language percentages reach the GIF and the job's log. Private repository names are

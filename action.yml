@@ -13,6 +13,9 @@ inputs:
   pattern:
     description: rings, aurora, patches, tide, swirl or ombre.
     default: rings
+  require-private:
+    description: Set to true to draw nothing if the token can't see any private repositories.
+    default: "false"
   token:
     description: Token for reading the account. The built-in token only sees public repositories; the account's own token also averages in private ones.
     default: ${{ github.token }}
@@ -29,5 +32,6 @@ runs:
         LOGIN: ${{ inputs.login }}
         OUTPUT_DIR: ${{ inputs.output-dir }}
         PATTERN: ${{ inputs.pattern }}
+        REQUIRE_PRIVATE: ${{ inputs.require-private }}
       run: |
-        "$GITHUB_ACTION_PATH/target/release/git-beluga" draw "$LOGIN" --out "$OUTPUT_DIR" --pattern "$PATTERN"
+        "$GITHUB_ACTION_PATH/target/release/git-beluga" draw "$LOGIN" --out "$OUTPUT_DIR" --pattern "$PATTERN" $([ "$REQUIRE_PRIVATE" = "true" ] && echo --require-private)
