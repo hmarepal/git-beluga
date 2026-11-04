@@ -21,15 +21,14 @@ Inspired by [git-koi](https://github.com/yalongwastaken/git-koi) by
 adds 0.83 and 0.17 to those languages, and the totals are divided by the number of
 repositories, so a huge notebook repo counts the same as a small script.
 
-In the default Rings pattern, each language gets one ring covering its share of the
-colored skin, with white between the rings. The body tapers, so the same share makes a narrow ring on the wide back and a
-longer one near the tail.
+In the default Rings pattern, wavy rings repeat down the body with white between them. Each
+language gets at least one ring and the bigger ones get more, while the least-used language
+fills the tail.
 
 ## Patterns
 
-`rings` (default), `aurora`, `patches`, `tide`, `swirl` and `ombre`. Rings is the only one
-whose coverage closely follows your percentages, within about 3 points over a lap; the
-others spread colors roughly in proportion.
+`rings` (default), `aurora`, `patches`, `tide`, `swirl` and `ombre`. Every pattern spreads
+colors roughly in proportion to your languages. The legend shows the true percentages.
 
 ## Moods
 

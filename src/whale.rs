@@ -21,8 +21,13 @@ const ZOOM: f32 = 1.2;
 const WATER_Z: f32 = -27.0;
 /// Where color starts on the body; the head stays white for the face.
 const COLOR_START: f32 = 0.25;
-/// How much of the skin behind the head the rings cover; the rest stays white between them.
-const RING_COVERAGE: f32 = 0.55;
+/// Rings repeat down the body: this many, one wave of color and white each.
+const HOOPS: usize = 7;
+const HOOP_LENGTH: f32 = 7.6;
+/// The part of each hoop's length that is color; the rest stays white.
+const HOOP_COLOR: f32 = 0.62;
+/// Behind this point the body is the tail, painted in the least-used language.
+const TAIL_START: f32 = 0.84;
 const MOUTH_RADIUS: f32 = 0.72;
 const BLUSH_RADIUS: f32 = 1.7;
 const EYE_U: f32 = 0.15;
@@ -284,7 +289,8 @@ impl Buffer {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Pattern {
-    /// Slim hoops around the body, sized by each language's share of the colored skin.
+    /// Wavy hoops down the body, repeated in proportion to the languages, with the least-used
+    /// language filling the tail.
     Rings,
     /// Long ribbons of light flowing the length of the body.
     Aurora,
@@ -327,59 +333,26 @@ fn mix(a: Rgb, b: Rgb, t: f32) -> Rgb {
     Rgb(m(a.0, b.0), m(a.1, b.1), m(a.2, b.2))
 }
 
-/// One ring: where it starts and ends along the body, and whose language it is.
-#[derive(Clone, Copy, Debug)]
-struct Ring {
-    start: f32,
-    end: f32,
-    language: usize,
-}
-
-/// Lays out one ring per language so each covers its share of the skin. A ring's length is
-/// not its share, because the body tapers: skin area goes with the radius, so the same share
-/// makes a narrow ring on the wide back and a longer one near the thin tail.
-fn lay_out_rings(shares: &[f32]) -> Vec<Ring> {
-    const STEPS: usize = 4000;
-    let total: f32 = shares.iter().sum();
-    if total <= 0.0 {
+/// Which language each hoop wears, from the head back. The least-used language has the tail,
+/// so the others share the hoops: everyone gets one, then the rest go by share. An account
+/// with one language wears it everywhere.
+fn hoop_languages(shares: &[f32]) -> Vec<usize> {
+    let pool = shares.len().saturating_sub(1).max(1).min(shares.len());
+    if pool == 0 {
         return Vec::new();
     }
-    let step = (1.0 - COLOR_START) / STEPS as f32;
-    let area_of = |i: usize| radius(COLOR_START + (i as f32 + 0.5) * step) * step * LENGTH;
-    let body_area: f32 = (0..STEPS).map(area_of).sum();
-    let colored = body_area * RING_COVERAGE;
-    // Each ring follows an equal band of white, so slim rings spread down the body.
-    let gap_area = (body_area - colored) / shares.len() as f32;
-    let mut rings = Vec::with_capacity(shares.len());
-    let (mut i, mut walked) = (0, 0.0);
-    for (language, &share) in shares.iter().enumerate() {
-        // White comes first, so the last and smallest ring lands on the thin tail, where the
-        // same area makes a longer, easier-to-see band.
-        let gap_end = walked + gap_area;
-        while i < STEPS && walked < gap_end {
-            walked += area_of(i);
-            i += 1;
-        }
-        let start = COLOR_START + i as f32 * step;
-        let target = walked + share / total * colored;
-        while i < STEPS && walked < target {
-            walked += area_of(i);
-            i += 1;
-        }
-        rings.push(Ring {
-            start,
-            end: COLOR_START + i as f32 * step,
-            language,
-        });
+    let mut hoops: Vec<usize> = (0..pool.min(HOOPS)).collect();
+    let total: f32 = shares[..pool].iter().sum();
+    while hoops.len() < HOOPS {
+        let need = |i: usize| {
+            shares[i] / total * HOOPS as f32 - hoops.iter().filter(|&&h| h == i).count() as f32
+        };
+        let best = (0..pool)
+            .max_by(|&a, &b| need(a).total_cmp(&need(b)).then(b.cmp(&a)))
+            .expect("the pool is not empty");
+        hoops.push(best);
     }
-    rings
-}
-
-fn ring_at(rings: &[Ring], u: f32) -> Option<usize> {
-    rings
-        .iter()
-        .find(|r| u >= r.start && u < r.end)
-        .map(|r| r.language)
+    hoops
 }
 
 /// Everything about the whale that does not change from frame to frame.
@@ -391,7 +364,9 @@ pub struct Whale {
     head_boost: f32,
     skin: Ramp,
     ramps: Vec<Ramp>,
-    rings: Vec<Ring>,
+    hoops: Vec<usize>,
+    /// The least-used language, which fills the tail in the Rings pattern.
+    least_used: Option<usize>,
     slots: Vec<usize>,
     /// Colors for bands that travel: exactly FLOW_BANDS pass per lap, so the loop closes.
     flow: Vec<usize>,
@@ -454,7 +429,8 @@ impl Whale {
                     Ramp::language(parse_hex(&l.color).unwrap_or(Rgb(0x8b, 0x93, 0xa7)), vivid)
                 })
                 .collect(),
-            rings: lay_out_rings(&shares),
+            hoops: hoop_languages(&shares),
+            least_used: shares.len().checked_sub(1),
             tips: allot(&shares, 4),
             flow: allot(&shares, FLOW_BANDS),
             slots,
@@ -656,12 +632,6 @@ fn along_body(samples: &[Sample], pos: V3) -> f32 {
     best as f32 / (samples.len() - 1) as f32
 }
 
-#[cfg(test)]
-thread_local! {
-    /// Body pixels drawn per ring language, so tests can measure the real picture.
-    static RING_PIXELS: std::cell::RefCell<Vec<u32>> = const { std::cell::RefCell::new(Vec::new()) };
-}
-
 fn scene(whale: &Whale, mood: Mood, t: f32) -> Frame {
     let cam = Camera::new();
     let samples = spine(whale, mood, t);
@@ -781,6 +751,10 @@ fn scene(whale: &Whale, mood: Mood, t: f32) -> Frame {
             // Wrapped light, so the shadow side falls off gently into blue.
             let light = (dot(hit.normal, sun) * 0.74 + 0.27).clamp(0.0, 1.0);
             let color = match hit.part {
+                Part::Fluke(_) if whale.pattern == Pattern::Rings && whale.least_used.is_some() => {
+                    let language = whale.least_used.expect("checked by the guard");
+                    whale.ramps[language].at(light * 0.85 + 0.12, x, y)
+                }
                 Part::Flipper(i) if hit.u > 0.62 => tip(2 + i).at(light * 0.8 + 0.1, x, y),
                 Part::Fluke(i) if hit.u > 0.64 => tip(i).at(light * 0.8 + 0.1, x, y),
                 Part::Body => {
@@ -796,14 +770,6 @@ fn scene(whale: &Whale, mood: Mood, t: f32) -> Frame {
                     } else if let Some((language, shift)) =
                         marking(whale, along_body(&samples, hit.pos), around, t, dither)
                     {
-                        #[cfg(test)]
-                        RING_PIXELS.with(|counts| {
-                            let mut counts = counts.borrow_mut();
-                            if counts.len() <= language {
-                                counts.resize(language + 1, 0);
-                            }
-                            counts[language] += 1;
-                        });
                         whale.ramps[language].at(light * 0.85 + 0.12 + shift, x, y)
                     } else {
                         whale.skin.at(light, x, y)
@@ -987,9 +953,18 @@ fn marking(whale: &Whale, u: f32, around: f32, t: f32, dither: f32) -> Option<(u
             (dx.hypot(dy) < size * wobble).then_some((wrap(i * 11), 0.0))
         }),
         Pattern::Rings => {
-            // A gentle wave in each edge; it moves the boundary, not the ring's share.
-            let wavy = u + 1.6 * (around.to_radians() * 2.0).sin() / LENGTH;
-            ring_at(&whale.rings, wavy).map(|language| (language, 0.0))
+            let angle = around.to_radians();
+            let wavy = x + 2.4 * (angle * 2.0).sin() + 0.5 * (angle * 5.0 + x * 0.7).sin();
+            if wavy >= TAIL_START * LENGTH {
+                whale.least_used.map(|language| (language, 0.0))
+            } else {
+                let v = (wavy - COLOR_START * LENGTH) / HOOP_LENGTH;
+                let band = v.floor();
+                (v >= 0.0 && v - band < HOOP_COLOR)
+                    .then(|| whale.hoops.get(band as usize))
+                    .flatten()
+                    .map(|&language| (language, 0.0))
+            }
         }
         Pattern::Tide => {
             let v = (x + y.abs() * 0.85) / 9.0 - t * FLOW_BANDS as f32;
@@ -1091,67 +1066,35 @@ mod tests {
             .collect()
     }
 
-    /// Measures how much colored skin each language really got.
-    fn measured_shares(rings: &[Ring], count: usize) -> Vec<f32> {
-        const STEPS: usize = 20_000;
-        let mut area = vec![0.0f32; count];
-        for i in 0..STEPS {
-            let u = COLOR_START + (1.0 - COLOR_START) * (i as f32 + 0.5) / STEPS as f32;
-            if let Some(language) = ring_at(rings, u) {
-                area[language] += radius(u);
-            }
-        }
-        let total: f32 = area.iter().sum();
-        area.iter().map(|a| a / total).collect()
-    }
-
     #[test]
-    fn rings_cover_exactly_each_languages_share() {
-        for shares in [
-            vec![0.83, 0.17],
-            vec![0.283, 0.217, 0.2, 0.1, 0.1, 0.082, 0.018],
-            vec![1.0],
-        ] {
-            let measured = measured_shares(&lay_out_rings(&shares), shares.len());
-            for (want, got) in shares.iter().zip(&measured) {
-                assert!((want - got).abs() < 0.005, "wanted {want}, measured {got}");
-            }
-        }
-    }
-
-    #[test]
-    fn drawn_rings_match_the_shares_over_a_whole_lap() {
+    fn hoops_follow_shares_and_leave_the_least_used_language_for_the_tail() {
         let shares = [0.257, 0.197, 0.182, 0.182, 0.091, 0.074, 0.017];
-        let a = activity(40);
-        let whale = Whale::new(&a, &languages(&shares), Pattern::Rings);
-        RING_PIXELS.with(|counts| counts.borrow_mut().clear());
-        for i in 0..FRAMES {
-            scene(&whale, Mood::Swim, i as f32 / FRAMES as f32);
+        let hoops = hoop_languages(&shares);
+        let count = |language: usize| hoops.iter().filter(|&&h| h == language).count();
+        assert_eq!(hoops.len(), HOOPS);
+        assert_eq!(count(6), 0, "the least-used language belongs to the tail");
+        for language in 0..6 {
+            assert!(count(language) >= 1, "language {language} has no hoop");
         }
-        let counts = RING_PIXELS.with(|counts| counts.borrow().clone());
-        let total: u32 = counts.iter().sum();
-        for (i, (&want, &got)) in shares.iter().zip(&counts).enumerate() {
-            let measured = got as f32 / total as f32;
-            println!(
-                "language {i}: wanted {:.1}%, drew {:.1}%",
-                want * 100.0,
-                measured * 100.0
-            );
-            assert!(
-                (measured - want).abs() <= 0.03 + want * 0.25,
-                "language {i}: wanted {want}, drew {measured}"
-            );
-        }
+        assert!(count(0) >= count(4));
     }
 
     #[test]
-    fn a_tiny_language_still_gets_a_visible_ring() {
-        let rings = lay_out_rings(&[0.283, 0.217, 0.2, 0.1, 0.1, 0.082, 0.018]);
-        let smallest = rings[6];
-        assert!(
-            (smallest.end - smallest.start) * LENGTH >= 2.0,
-            "{smallest:?}"
-        );
+    fn one_or_two_languages_still_work() {
+        assert_eq!(hoop_languages(&[1.0]), vec![0; HOOPS]);
+        assert_eq!(hoop_languages(&[0.83, 0.17]), vec![0; HOOPS]);
+        assert!(hoop_languages(&[]).is_empty());
+    }
+
+    #[test]
+    fn the_tail_is_painted_in_the_least_used_language() {
+        let a = activity(4000);
+        let langs = languages(&[0.6, 0.3, 0.1]);
+        let whale = Whale::new(&a, &langs, Pattern::Rings);
+        let least = whale.ramps[2].0;
+        let frame = scene(&whale, Mood::Swim, 0.3);
+        let pixels = frame.iter().flatten().filter(|c| least.contains(c)).count();
+        assert!(pixels > 60, "only {pixels} tail-colored pixels");
     }
 
     #[test]
